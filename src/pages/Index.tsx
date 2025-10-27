@@ -9,6 +9,7 @@ import { SectionCard } from "@/components/dashboard/SectionCard";
 import { TaskList } from "@/components/soldi/TaskList";
 import type { Task } from "@/components/soldi/TaskList";
 import { MoneyTracker } from "@/components/soldi/MoneyTracker";
+import { FocusSection } from "@/components/business/FocusSection";
 import type { MoneyTransaction } from "@/components/soldi/MoneyTracker";
 import { WorkTracker } from "@/components/soldi/WorkTracker";
 import { useTransactionService, type Transaction } from "@/lib/transactionService";
@@ -636,6 +637,8 @@ const Index = () => {
                   onRemoveTransaction={handleRemoveTransaction}
                 />
               </div>
+
+              <FocusSection />
 
               <div className="mb-6">
                 <WorkTracker />

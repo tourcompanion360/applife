@@ -11,15 +11,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Sparkles, Mountain, Book, Cpu } from "lucide-react";
-import { useState } from "react";
-
-interface Experience {
-  id: string;
-  title: string;
-  category: "natura" | "hobby" | "lettura" | "progetti";
-  date: string;
-  description: string;
-}
+import { useState, useMemo } from "react";
+import { useExperienceService, type ExperienceEntry, type ExperienceCategory } from "@/lib/experienceService";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { format } from "date-fns";
 
 const categoryIcons = {
   natura: Mountain,
@@ -36,59 +32,56 @@ const categoryLabels = {
 };
 
 export const ExperienceTracker = () => {
-  const [experiences, setExperiences] = useState<Experience[]>([
-    {
-      id: "1",
-      title: "Passeggiata al parco",
-      category: "natura",
-      date: "Oggi",
-      description: "1h di connessione con la natura",
-    },
-    {
-      id: "2",
-      title: "Progetto Drone FPV",
-      category: "progetti",
-      date: "In corso",
-      description: "Costruzione drone con vecchi componenti",
-    },
-    {
-      id: "3",
-      title: "Lettura libro mindset",
-      category: "lettura",
-      date: "Ieri",
-      description: "30 pagine sul mindset imprenditoriale",
-    },
-  ]);
-
+  const { experiences, loading, addExperience, deleteExperience } = useExperienceService();
   const [newExperience, setNewExperience] = useState({
     title: "",
-    category: "natura" as Experience["category"],
+    category: "natura" as ExperienceCategory,
     date: "Oggi",
     description: "",
   });
+  const [submitting, setSubmitting] = useState(false);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const resetForm = () => {
     setNewExperience({ title: "", category: "natura", date: "Oggi", description: "" });
   };
 
-  const handleAddExperience = () => {
+  const handleAddExperience = async () => {
     if (!newExperience.title.trim() || !newExperience.description.trim()) {
       return;
     }
 
-    setExperiences((prev) => [
-      {
-        id: Date.now().toString(),
-        title: newExperience.title.trim(),
-        category: newExperience.category,
-        date: newExperience.date.trim() || "Oggi",
-        description: newExperience.description.trim(),
-      },
-      ...prev,
-    ]);
+    setSubmitting(true);
+    const success = await addExperience(
+      newExperience.title.trim(),
+      newExperience.category,
+      newExperience.date.trim() || "Oggi",
+      newExperience.description.trim(),
+    );
+    setSubmitting(false);
 
-    resetForm();
+    if (success) {
+      resetForm();
+    }
   };
+
+  const handleDeleteExperience = async (id: string) => {
+    if (submitting || deletingId) return;
+    setDeletingId(id);
+    const success = await deleteExperience(id);
+    if (success) {
+      if (detailId === id) {
+        setDetailId(null);
+      }
+    }
+    setDeletingId(null);
+  };
+
+  const selectedExperience = useMemo(
+    () => experiences.find((exp) => exp.id === detailId) ?? null,
+    [detailId, experiences],
+  );
 
   return (
     <div className="space-y-4">
@@ -115,7 +108,7 @@ export const ExperienceTracker = () => {
           <Select
             value={newExperience.category}
             onValueChange={(value) =>
-              setNewExperience((prev) => ({ ...prev, category: value as Experience["category"] }))
+              setNewExperience((prev) => ({ ...prev, category: value as ExperienceCategory }))
             }
           >
             <SelectTrigger className="border-2">
@@ -141,7 +134,11 @@ export const ExperienceTracker = () => {
           <Button variant="outline" onClick={resetForm} className="border-2">
             Reset
           </Button>
-          <Button onClick={handleAddExperience} className="border-2">
+          <Button
+            onClick={handleAddExperience}
+            className="border-2"
+            disabled={submitting || loading}
+          >
             <Sparkles className="h-4 w-4 mr-2" />
             Aggiungi esperienza
           </Button>
@@ -149,33 +146,106 @@ export const ExperienceTracker = () => {
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {experiences.map((exp) => {
-          const Icon = categoryIcons[exp.category];
-          return (
-            <Card key={exp.id} className="p-4 hover:shadow-md transition-shadow">
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-mente-light shrink-0">
-                  <Icon className="h-5 w-5 text-mente" />
+        {loading ? (
+          <Card className="p-4 border-dashed text-sm text-muted-foreground">
+            Caricamento esperienze...
+          </Card>
+        ) : experiences.length === 0 ? (
+          <Card className="p-4 border-dashed text-sm text-muted-foreground">
+            Nessuna esperienza registrata. Aggiungi la tua prima esperienza!
+          </Card>
+        ) : (
+          experiences.map((exp: ExperienceEntry) => {
+            const Icon = categoryIcons[exp.category];
+            return (
+              <Card key={exp.id} className="p-4 hover:shadow-md transition-shadow">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-mente-light shrink-0">
+                    <Icon className="h-5 w-5 text-mente" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <h4 className="font-semibold">{exp.title}</h4>
+                      <Badge variant="outline" className="text-xs shrink-0">
+                        {exp.dateLabel}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      {exp.description}
+                    </p>
+                    <div className="flex items-center justify-between gap-2">
+                      <Badge className="text-xs border-2 border-mente/40 bg-mente/20 text-mente">
+                        {categoryLabels[exp.category]}
+                      </Badge>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" className="border-2" onClick={() => setDetailId(exp.id)}>
+                          Dettagli
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="border-2"
+                          disabled={deletingId === exp.id}
+                          onClick={() => handleDeleteExperience(exp.id)}
+                        >
+                          {deletingId === exp.id ? "Eliminazione..." : "Elimina"}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <h4 className="font-semibold">{exp.title}</h4>
-                    <Badge variant="outline" className="text-xs shrink-0">
-                      {exp.date}
+              </Card>
+            );
+          })
+        )}
+      </div>
+
+      <Dialog open={!!selectedExperience} onOpenChange={(open) => (!open ? setDetailId(null) : undefined)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{selectedExperience?.title}</DialogTitle>
+            <DialogDescription>
+              {selectedExperience?.createdAt
+                ? `Registrata il ${format(new Date(selectedExperience.createdAt), "dd MMM yyyy")}`
+                : "Dettagli esperienza"}
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[60vh] pr-4">
+            <div className="space-y-4">
+              {selectedExperience && (
+                <>
+                  <div className="flex items-center gap-3">
+                    <Badge className="text-xs border-2 border-mente/40 bg-mente/20 text-mente">
+                      {categoryLabels[selectedExperience.category]}
+                    </Badge>
+                    <Badge variant="outline" className="text-xs">
+                      {selectedExperience.dateLabel}
                     </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground mb-2">
-                    {exp.description}
+                  <p className="text-sm leading-relaxed whitespace-pre-line">
+                    {selectedExperience.description || "Nessuna descrizione disponibile."}
                   </p>
-                  <Badge className="text-xs border-2 border-mente/40 bg-mente/20 text-mente">
-                    {categoryLabels[exp.category]}
-                  </Badge>
-                </div>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+                </>
+              )}
+            </div>
+          </ScrollArea>
+          <div className="flex justify-end gap-2">
+            {selectedExperience && (
+              <Button
+                variant="destructive"
+                className="border-2"
+                disabled={deletingId === selectedExperience.id}
+                onClick={() => handleDeleteExperience(selectedExperience.id)}
+              >
+                {deletingId === selectedExperience.id ? "Eliminazione..." : "Elimina esperienza"}
+              </Button>
+            )}
+            <Button variant="outline" className="border-2" onClick={() => setDetailId(null)}>
+              Chiudi
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Card className="p-6 bg-gradient-mente text-white">
         <h4 className="font-semibold mb-2">💡 Suggerimento</h4>
